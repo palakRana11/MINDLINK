@@ -1,0 +1,7 @@
+| # | Method   | Endpoint                                 | Purpose                                                                                                      |
+| - | -------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 1 | **POST** | `http://127.0.0.1:5000/register/patient` | Register a new patient with fields: `name`, `email`, `password`, `gender`, `age`, `profession`, `diagnosed`. |
+| 2 | **POST** | `http://127.0.0.1:5000/login/patient`    | Log in a patient using email and password. Returns patient details if successful.                            |                                                                            |
+| - | -------- | ---------------------------------------  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3 | **POST** | `http://127.0.0.1:5000/register/doctor`  | Register a new doctor with fields: `name`, `email`, `specialization`, `license_number`, `years_experience`, `college`, `hospital`, `contact_number`, `password`. |
+| 4 | **POST** | `http://127.0.0.1:5000/login/doctor`     | Log in a doctor using email and password. Returns doctor details if successful.                                                                                  |

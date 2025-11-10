@@ -1,0 +1,25 @@
+# Ignore environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Ignore Python cache and build files
+__pycache__/
+*.pyc
+
+# Ignore Node modules
+node_modules/
+build/
+dist/
+
+# Ignore logs
+*.log
+logs/
+
+# Ignore virtual environments
+venv/
+.env/
+
+#ignore local history
+.history/
