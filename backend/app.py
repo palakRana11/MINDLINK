@@ -735,40 +735,6 @@ def get_chat(patient_id, doctor_id):
     ]
     return jsonify(result), 200
 
-# --------------------------------
-# ✅ GET WEEKLY MOOD DATA FOR DOCTOR'S PATIENT
-# --------------------------------
-@app.route('/doctor/<doctor_id>/patient/<patient_id>/mood', methods=['GET'])
-def get_patient_mood_data(doctor_id, patient_id):
-    """Fetch last 7 days of mood/sentiment for one patient (for graph visualization)."""
-    try:
-        # Verify doctor-patient connection
-        doctor_record = doctor_patients_col.find_one({"doctor_id": ObjectId(doctor_id)})
-        if not doctor_record or ObjectId(patient_id) not in doctor_record.get("patients", []):
-            return jsonify({"error": "Unauthorized access or patient not assigned"}), 403
-
-        # Get last 7 journal entries for that patient (sorted by date)
-        recent_entries = list(journals_col.find(
-            {"patient_id": patient_id}
-        ).sort("date", -1).limit(7))
-
-        if not recent_entries:
-            return jsonify([]), 200
-
-        # Prepare mood trend data
-        result = []
-        for e in reversed(recent_entries):  # oldest first for left-to-right graph
-            result.append({
-                "date": e.get("date", ""),
-                "mood": e.get("mood", "Neutral"),
-                "sentiment_score": e.get("sentiment_score", 0)
-            })
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        print("Error fetching mood data:", e)
-        return jsonify({"error": str(e)}), 500
 
 
 
