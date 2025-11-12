@@ -1,0 +1,11 @@
+/* Fix clipping issue for React Calendar tiles */
+.react-calendar__tile {
+  overflow: visible !important;
+  position: relative;
+  z-index: auto;
+}
+
+.react-calendar {
+  overflow: visible !important;
+  z-index: auto;
+}

@@ -46,9 +46,7 @@ export default function Navbar({ role }) {
                Requests
             </Link>
 
-            <Link to="/doctor/patients" className="hover:text-green-700">
-               Patients
-            </Link>
+
 
             <Link to="/doctor/insights" className="hover:text-green-700">
                Patient Insights

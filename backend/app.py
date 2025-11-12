@@ -10,6 +10,12 @@ import nltk
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+try:
+    from google import genai
+except Exception as e:
+    genai = None
+    print("Warning: google.genai client not available:", e)
+import random
 
 
 # --------------------------------
@@ -18,8 +24,25 @@ from datetime import datetime, timedelta
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+
+
+CORS(app,
+     resources={r"/*": {"origins": "*"}},
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"])
+app.config['CORS_HEADERS'] = 'Content-Type'
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+
+# --------------------------------
+# CHATBOT CONFIGURATION (optional)
+# --------------------------------
+# if genai is not None:
+#     try:
+#         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+#     except Exception as e:
+#         print("Warning: could not configure genai:", e)
+client = genai.Client()  # reads GEMINI_API_KEY internally
+
 
 # --------------------------------
 # MongoDB Connection
@@ -735,6 +758,229 @@ def get_chat(patient_id, doctor_id):
     ]
     return jsonify(result), 200
 
+
+# --------------------------------
+# ✅ CREATE A SESSION REQUEST (doctor or patient)
+# --------------------------------
+@app.route('/session/create', methods=['POST'])
+def create_session():
+    data = request.get_json()
+    doctor_id = data.get("doctor_id")
+    patient_id = data.get("patient_id")
+    date = data.get("date")
+    time = data.get("time")
+    created_by = data.get("created_by")
+
+    if not all([doctor_id, patient_id, date, time, created_by]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    sessions_col = db["Sessions"]
+
+    # Prevent duplicate sessions for the same doctor on same date & time
+    if sessions_col.find_one({"doctor_id": ObjectId(doctor_id), "date": date, "time": time}):
+        return jsonify({"error": "Slot already booked with this doctor"}), 400
+
+    # Prevent patient from booking the same slot with another doctor
+    if sessions_col.find_one({"patient_id": ObjectId(patient_id), "date": date, "time": time}):
+        return jsonify({"error": "Patient already booked this slot"}), 400
+
+    sessions_col.insert_one({
+        "doctor_id": ObjectId(doctor_id),
+        "patient_id": ObjectId(patient_id),
+        "date": date,
+        "time": time,
+        "status": "pending",
+        "created_by": created_by,
+        "created_at": datetime.utcnow()
+    })
+
+    return jsonify({"message": "Session request created successfully!"}), 201
+
+
+# --------------------------------
+# ✅ FETCH SESSIONS (for both doctor and patient)
+# --------------------------------
+@app.route('/sessions/<role>/<user_id>', methods=['GET'])
+def get_sessions(role, user_id):
+    sessions_col = db["Sessions"]
+    # Validate user_id before converting to ObjectId to avoid InvalidId exceptions
+    if not user_id or not ObjectId.is_valid(user_id):
+        return jsonify({"error": "Invalid or missing user_id"}), 400
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        return jsonify({"error": "Invalid user_id format"}), 400
+
+    query = {"doctor_id": oid} if role == "doctor" else {"patient_id": oid}
+    
+    # Fetch sessions sorted by date
+    sessions = list(sessions_col.find(query).sort("date", 1))
+
+    result = []
+    for s in sessions:
+        doctor = doctors_col.find_one({"_id": s["doctor_id"]}, {"name": 1})
+        patient = patients_col.find_one({"_id": s["patient_id"]}, {"name": 1})
+        result.append({
+            "id": str(s["_id"]),
+            "doctor_name": doctor.get("name", "") if doctor else "",
+            "patient_name": patient.get("name", "") if patient else "",
+            "date": s.get("date", ""),
+            "time": s.get("time", ""),
+            "status": s.get("status", "pending"),
+            "created_by": s.get("created_by", ""),
+            "edit_request": s.get("edit_request", {})
+        })
+
+    return jsonify(result), 200
+
+
+# --------------------------------
+# ✅ UPDATE SESSION STATUS (accept/reject)
+# --------------------------------
+@app.route('/session/<session_id>/update', methods=['PATCH'])
+def update_session_status(session_id):
+    data = request.get_json()
+    status = data.get("status")
+
+    if status not in ["accepted", "rejected"]:
+        return jsonify({"error": "Invalid status"}), 400
+
+    db["Sessions"].update_one(
+        {"_id": ObjectId(session_id)},
+        {"$set": {"status": status, "updated_at": datetime.utcnow()}}
+    )
+
+    return jsonify({"message": f"Session {status} successfully!"}), 200
+
+
+# --------------------------------
+# ✅ EDIT REQUEST SESSION DETAILS
+# --------------------------------
+@app.route('/session/<session_id>/edit', methods=['PATCH'])
+def request_edit_session(session_id):
+    data = request.get_json()
+    new_date = data.get("new_date")
+    new_time = data.get("new_time")
+    requested_by = data.get("requested_by")
+
+    if not all([new_date, new_time, requested_by]):
+        return jsonify({"error": "Missing fields"}), 400
+
+    sessions_col = db["Sessions"]
+    session = sessions_col.find_one({"_id": ObjectId(session_id)})
+
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    # Prevent double-booking of the new slot for the same doctor
+    if sessions_col.find_one({
+        "doctor_id": session["doctor_id"],
+        "date": new_date,
+        "time": new_time,
+        "_id": {"$ne": ObjectId(session_id)}
+    }):
+        return jsonify({"error": "Requested slot already booked"}), 400
+
+    sessions_col.update_one(
+        {"_id": ObjectId(session_id)},
+        {"$set": {
+            "edit_request": {
+                "new_date": new_date,
+                "new_time": new_time,
+                "requested_by": requested_by
+            },
+            "status": "edit_requested",
+            "updated_at": datetime.utcnow()
+        }}
+    )
+
+    return jsonify({"message": "Edit request sent successfully!"}), 200
+
+
+# --------------------------------
+# ✅ APPROVE OR REJECT EDIT REQUEST
+# --------------------------------
+@app.route('/session/<session_id>/edit/decision', methods=['PATCH'])
+def handle_edit_request_decision(session_id):
+    data = request.get_json()
+    decision = data.get("decision")  # accept or reject
+    decided_by = data.get("decided_by")
+
+    if decision not in ["accept", "reject"]:
+        return jsonify({"error": "Invalid decision"}), 400
+
+    sessions_col = db["Sessions"]
+    session = sessions_col.find_one({"_id": ObjectId(session_id)})
+
+    if not session or "edit_request" not in session:
+        return jsonify({"error": "No edit request found"}), 404
+
+    if decision == "accept":
+        sessions_col.update_one(
+            {"_id": ObjectId(session_id)},
+            {"$set": {
+                "date": session["edit_request"]["new_date"],
+                "time": session["edit_request"]["new_time"],
+                "status": "accepted",
+                "edit_request": {},
+                "updated_at": datetime.utcnow(),
+                "edit_decided_by": decided_by
+            }}
+        )
+        return jsonify({"message": "Edit request accepted and session updated!"}), 200
+    else:
+        sessions_col.update_one(
+            {"_id": ObjectId(session_id)},
+            {"$set": {
+                "status": "edit_rejected",
+                "updated_at": datetime.utcnow(),
+                "edit_decided_by": decided_by
+            }, "$unset": {"edit_request": ""}}
+        )
+        return jsonify({"message": "Edit request rejected!"}), 200
+    
+#---------------------
+#CHATBOT
+#---------------------
+
+@app.route("/gemini", methods=["POST"])
+def gemini_chat():
+    data = request.get_json()
+    user_input = data.get("prompt")
+    user_name = data.get("name", "friend")
+
+    if not user_input:
+        return jsonify({"error": "Prompt is required"}), 400
+
+    if genai is None:
+        return jsonify({"error": "Generative AI client not available."}), 503
+
+    if not os.getenv("GEMINI_API_KEY"):
+        return jsonify({"error": "GEMINI_API_KEY not set on server."}), 500
+
+    # Simplified prompt without quotes
+    prompt = (
+        f"You are a friendly mental health support buddy named 'MindBuddy'. "
+        f"Address the user by their first name and be empathetic and encouraging.\n\n"
+        f"User's name: {user_name}\n"
+        f"User says: {user_input}\n\n"
+        f"Respond as a supportive and kind buddy."
+    )
+
+    try:
+        client = genai.Client()  # API key loaded via env var
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        return jsonify({"response": response.text.strip()}), 200
+
+    except Exception as e:
+        print("Gemini API Error:", e)
+        return jsonify({"error": "Failed to generate response. " + str(e)}), 500
 
 
 

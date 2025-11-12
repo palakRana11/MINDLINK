@@ -16,6 +16,7 @@ import DoctorDashboard from "../pages/doctor/Dashboard.jsx";
 import DoctorProfile from "../pages/doctor/DoctorProfile.jsx";
 import DoctorRequests from "../pages/doctor/DoctorRequests.jsx";
 import PatientsInsights from "../pages/doctor/PatientsInsights.jsx";
+import DoctorSessions from "../pages/doctor/DoctorSessions.jsx";
 
 import PatientDashboard from "../pages/patient/Dashboard.jsx";
 import PatientJournal from "../pages/patient/Journal.jsx";
@@ -230,6 +231,19 @@ function AppRoutes() {
           )
         }
       />
+
+      <Route
+        path="/doctor/sessions"
+        element={
+          isAuthenticated && effectiveUser.role === "doctor" ? (
+            <Layout>
+              <DoctorSessions />
+            </Layout>
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
       <Route
         path="/doctor/requests"
         element={
@@ -276,7 +290,7 @@ function AppRoutes() {
   );
 }
 
-// ✅ Root App
+// Root App
 export default function App() {
   return (
     <UserProvider>
