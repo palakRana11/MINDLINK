@@ -69,7 +69,7 @@ custom_words = {
     "depressed": -3.5, "heartbroken": -3.5, "hopeless": -3.0,
     "lonely": -2.8, "sad": -2.5,
     "happy": 3.0, "joyful": 3.2, "cheerful": 2.8, "excited": 2.5,
-    "relaxed": 2.0, "content": 2.0, "grateful": 2.5
+    "relaxed": 2.0, "content": 2.0, "grateful": 2.5 , "anxious": -0.5
 }
 nltk.download('vader_lexicon')
 sentiment_analyzer = SentimentIntensityAnalyzer()
@@ -79,17 +79,32 @@ def analyze_mood(text):
     """Analyze mood using VADER sentiment scores."""
     scores = sentiment_analyzer.polarity_scores(text)
     compound = scores['compound']
-
     if compound >= 0.5:
         mood = "Happy"
+
     elif 0.1 <= compound < 0.5:
         mood = "Calm"
-    elif -0.4 <= compound < 0.1:
+
+    elif -0.1 <= compound < 0.1:
         mood = "Neutral"
-    elif -0.7 <= compound < -0.4:
+
+    elif -0.5 <= compound < -0.1:
         mood = "Sad"
-    else:
+
+    else:  
         mood = "Angry"
+
+
+    # if compound >= 0.5:
+    #     mood = "Happy"
+    # elif 0.1 <= compound < 0.5:
+    #     mood = "Calm"
+    # elif -0.1 <= compound < 0.1:
+    #     mood = "Neutral"
+    # elif -0.7 <= compound < -0.1:
+    #     mood = "Sad"
+    # else:
+    #     mood = "Angry"
 
     return {"compound": compound, "mood": mood}
 

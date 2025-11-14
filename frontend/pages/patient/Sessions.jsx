@@ -16,6 +16,11 @@ export default function Sessions() {
   const [editDateByPatient, setEditDateByPatient] = useState("");
   const [editTimeByPatient, setEditTimeByPatient] = useState("");
 
+  // ---------- FIXED DATE FORMAT ----------
+  const formatDate = (d) => {
+    return d.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  };
+
   useEffect(() => {
     fetch(`http://127.0.0.1:5000/sessions/patient/${patientId}`)
       .then((res) => res.json())
@@ -26,6 +31,7 @@ export default function Sessions() {
       .then((data) => setAvailableDoctors(Array.isArray(data) ? data : []));
   }, [patientId]);
 
+  // ------------------ CREATE SESSION ------------------
   const handleCreateSession = async () => {
     const res = await fetch("http://127.0.0.1:5000/session/create", {
       method: "POST",
@@ -33,7 +39,7 @@ export default function Sessions() {
       body: JSON.stringify({
         doctor_id: doctorId,
         patient_id: patientId,
-        date: selectedDate.toISOString().split("T")[0],
+        date: formatDate(selectedDate),
         time,
         created_by: "patient",
       }),
@@ -43,6 +49,7 @@ export default function Sessions() {
     window.location.reload();
   };
 
+  // -------------------- STATUS CHANGE --------------------
   const handleStatusChange = async (id, status) => {
     await fetch(`http://127.0.0.1:5000/session/${id}/update`, {
       method: "PATCH",
@@ -53,6 +60,7 @@ export default function Sessions() {
     window.location.reload();
   };
 
+  // -------------------- PATIENT EDIT REQUEST --------------------
   const handlePatientEditRequest = async (sessionId) => {
     if (!editDateByPatient || !editTimeByPatient)
       return alert("Please choose new date and time.");
@@ -66,26 +74,32 @@ export default function Sessions() {
         requested_by: "patient",
       }),
     });
+
     const data = await res.json();
     alert(data.message || "Edit request sent");
     setEditingSession(null);
     window.location.reload();
   };
 
+  // -------------------- PATIENT RESPONSE TO DOCTOR EDIT --------------------
   const handleRespondEdit = async (sessionId, decision) => {
-    const res = await fetch(`http://127.0.0.1:5000/session/${sessionId}/edit/decision`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        decision, // "accept" or "reject"
-        decided_by: "patient",
-      }),
-    });
+    const res = await fetch(
+      `http://127.0.0.1:5000/session/${sessionId}/edit/decision`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          decided_by: "patient",
+        }),
+      }
+    );
     const data = await res.json();
     alert(data.message || `Edit ${decision}ed`);
     window.location.reload();
   };
 
+  // ----------- TIME FORMATTER -----------
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [hour, minute] = timeStr.split(":");
@@ -95,8 +109,9 @@ export default function Sessions() {
     return `${formattedHour}:${minute} ${ampm}`;
   };
 
+  // ----------- TOOLTIP DOTS ON CALENDAR -----------
   const tileContent = ({ date }) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDate(date);
     const dateSessions = sessions.filter((s) => s.date === dateStr);
 
     if (dateSessions.length === 0) return null;
@@ -111,14 +126,15 @@ export default function Sessions() {
       .join("\n");
 
     return (
-      <div
-        title={tooltipText}
-        className="flex justify-center items-center mt-1"
-      >
+      <div className="flex justify-center items-center mt-1" title={tooltipText}>
         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
       </div>
     );
   };
+
+  // ---------------------------------------------------------
+  // ----------------------- UI START -------------------------
+  // ---------------------------------------------------------
 
   return (
     <div className="max-w-4xl mx-auto p-8 bg-[#fdfbf9] rounded-3xl shadow-lg">
@@ -126,14 +142,20 @@ export default function Sessions() {
         📅 My Therapy Sessions
       </h2>
 
+      {/* ------------ CALENDAR + REQUEST NEW SESSION ------------ */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 bg-white p-4 rounded-xl border border-[#e2dfd0]">
-          <Calendar onChange={setSelectedDate} value={selectedDate} tileContent={tileContent} />
+          <Calendar
+            onChange={setSelectedDate}
+            value={selectedDate}
+            tileContent={tileContent}
+          />
           <p className="text-center mt-2 text-gray-600">
             Selected: {selectedDate.toDateString()}
           </p>
         </div>
 
+        {/* REQUEST FORM */}
         <div className="flex-1">
           <h3 className="text-lg font-semibold mb-3">Request New Session</h3>
 
@@ -164,6 +186,7 @@ export default function Sessions() {
         </div>
       </div>
 
+      {/* ------------ ALL SESSIONS ------------ */}
       <div className="mt-8">
         <h3 className="text-xl font-semibold mb-3 text-[#2f4f4f]">
           🧾 All Sessions
@@ -177,28 +200,31 @@ export default function Sessions() {
                 className="p-4 bg-[#fafaf9] rounded-xl border border-[#e2dfd0] flex flex-col md:flex-row justify-between items-start md:items-center gap-3"
               >
                 <div className="flex-1">
-                  <p className="font-medium">{s.doctor_name}</p>
+                  <p className="font-medium"> Dr. {s.doctor_name}</p>
                   <p className="text-sm text-gray-600">
                     {s.date} at {formatTime(s.time)}
                   </p>
 
-                  {s.edit_request && s.edit_request.new_date && (
-                    <div className="mt-2 text-sm bg-gray-50 rounded p-2 border border-gray-100">
-                      <p className="text-xs text-gray-700">
-                        Edit requested by <strong>{s.edit_request.requested_by}</strong>
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        New: {s.edit_request.new_date} at{" "}
-                        {formatTime(s.edit_request.new_time)}
-                      </p>
-                    </div>
-                  )}
+                  {/* DOCTOR EDIT REQUEST */}
+                  {s.edit_request &&
+                    s.edit_request.new_date &&
+                    s.edit_request.requested_by === "doctor" && (
+                      <div className="mt-2 text-sm bg-gray-50 rounded p-2 border border-gray-100">
+                        <p className="text-xs text-gray-700">
+                          Doctor requested to edit
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          New: {s.edit_request.new_date} at{" "}
+                          {formatTime(s.edit_request.new_time)}
+                        </p>
+                      </div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {/* ACCEPT/REJECT doctor edit request */}
                   {s.status === "edit_requested" &&
-                  s.edit_request &&
-                  s.edit_request.requested_by === "doctor" ? (
+                  s.edit_request?.requested_by === "doctor" ? (
                     <>
                       <button
                         className="text-green-600 hover:underline"
@@ -211,23 +237,6 @@ export default function Sessions() {
                         onClick={() => handleRespondEdit(s.id, "reject")}
                       >
                         Reject Edit
-                      </button>
-                    </>
-                  ) : null}
-
-                  {s.status === "pending" && s.created_by === "doctor" ? (
-                    <>
-                      <button
-                        className="text-green-600 mr-3 hover:underline"
-                        onClick={() => handleStatusChange(s.id, "accepted")}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        className="text-red-600 hover:underline"
-                        onClick={() => handleStatusChange(s.id, "rejected")}
-                      >
-                        Reject
                       </button>
                     </>
                   ) : (
@@ -244,6 +253,7 @@ export default function Sessions() {
                     </span>
                   )}
 
+                  {/* PATIENT EDIT REQUEST */}
                   {editingSession === s.id ? (
                     <div className="flex items-center gap-2">
                       <input

@@ -1,14 +1,33 @@
 import React, { useContext, useEffect, useState } from "react";
 import { UserContext } from "../../src/context/UserContext";
 import axios from "axios";
+import Calendar from "react-calendar";
+import "react-calendar/dist/Calendar.css";
+import { useNavigate } from "react-router-dom";
 
 function Dashboard() {
   const { loggedUser } = useContext(UserContext);
   const userName = loggedUser?.name?.split(" ")[0] || "Friend";
   const userId = loggedUser?.id;
+  const navigate = useNavigate();
 
   const [mood, setMood] = useState(null);
+  const [quote, setQuote] = useState("");
+  const [value, setValue] = useState(new Date());
+  const [sessions, setSessions] = useState([]);
 
+  // mood → gradient colors
+  const moodColors = {
+    Happy: "from-yellow-100 to-yellow-50",
+    Sad: "from-blue-100 to-blue-50",
+    Angry: "from-red-100 to-red-50",
+    Calm: "from-green-100 to-green-50",
+    Stressed: "from-purple-100 to-purple-50",
+    Neutral: "from-gray-100 to-gray-50",   // ⭐ ADDED NEUTRAL
+    None: "from-gray-100 to-white",
+  };
+
+  // ----------------------- QUOTES -----------------------
   const quotes = {
     Happy: [
       "Keep shining, happiness looks great on you!",
@@ -30,7 +49,7 @@ function Dashboard() {
       "Your smile is your strongest strength.",
       "Let the sunshine in your soul shine.",
       "Your happiness uplifts everyone.",
-      "You make today better just by being here!"
+      "You make today better just by being here!",
     ],
 
     Sad: [
@@ -53,7 +72,7 @@ function Dashboard() {
       "You have survived every tough day.",
       "Small steps still move you forward.",
       "You will smile again.",
-      "Your story isn’t over yet."
+      "Your story isn’t over yet.",
     ],
 
     Angry: [
@@ -76,7 +95,7 @@ function Dashboard() {
       "You are doing your best in a tough moment.",
       "Your calm is returning.",
       "Peace is finding its way back to you.",
-      "Let today soften your heart again."
+      "Let today soften your heart again.",
     ],
 
     Calm: [
@@ -99,7 +118,7 @@ function Dashboard() {
       "Keep embracing the stillness.",
       "You are exactly where you need to be.",
       "Your calm heart is powerful.",
-      "Serenity surrounds you today."
+      "Serenity surrounds you today.",
     ],
 
     Stressed: [
@@ -122,7 +141,31 @@ function Dashboard() {
       "This tension will ease soon.",
       "You deserve peace and rest.",
       "Let today be softer.",
-      "Trust yourself—you will get through this."
+      "Trust yourself—you will get through this.",
+    ],
+
+    // ⭐⭐⭐ ADDED NEUTRAL QUOTES (20) ⭐⭐⭐
+    Neutral: [
+      "Today is a fresh canvas—see where it takes you.",
+      "Not every day needs to be extraordinary, and that’s okay.",
+      "Neutral days are perfect for small wins.",
+      "You’re doing fine—no pressure at all.",
+      "A calm mind can grow beautiful ideas.",
+      "You don’t have to feel a certain way to have a good day.",
+      "Neutral moments lead to stable progress.",
+      "Even simple days matter.",
+      "Balance is quietly powerful.",
+      "You’re moving forward, even gently.",
+      "Take today at your own pace.",
+      "Every steady step counts.",
+      "Not too high, not too low—just right.",
+      "Neutral days help reset the mind.",
+      "You’re doing better than you think.",
+      "There’s beauty in the in-between.",
+      "Let today be soft and simple.",
+      "You don't need excitement to grow.",
+      "Quiet days restore your energy.",
+      "Sometimes neutral is exactly what you need.",
     ],
 
     None: [
@@ -145,15 +188,11 @@ function Dashboard() {
       "You are capable of beautiful things.",
       "One moment at a time—that’s all you need.",
       "Your potential is limitless.",
-      "You deserve kindness—from yourself too."
-    ]
+      "You deserve kindness—from yourself too.",
+    ],
   };
 
-  const [quote, setQuote] = useState("");
-
-  // ----------------------------------------------------------
-  // Fetch today's mood from backend
-  // ----------------------------------------------------------
+  // ---------------------- FETCH MOOD ----------------------
   useEffect(() => {
     if (!userId) return;
 
@@ -163,31 +202,102 @@ function Dashboard() {
         const moodToday = res.data.mood || "None";
         setMood(moodToday);
 
-        // pick random quote from correct mood array
-        const moodQuotes = quotes[moodToday] || quotes["None"];
-        const randomQuote = moodQuotes[Math.floor(Math.random() * moodQuotes.length)];
+        const arr = quotes[moodToday] || quotes["None"];
+        const q1 = arr[Math.floor(Math.random() * arr.length)];
+        const q2 = arr[Math.floor(Math.random() * arr.length)];
 
-        setQuote(randomQuote);
+        setQuote(`${q1} ${q2}`);
       })
       .catch(() => {
         setMood("None");
-        setQuote(quotes["None"][Math.floor(Math.random() * quotes["None"].length)]);
+        const arr = quotes["None"];
+        const q1 = arr[Math.floor(Math.random() * arr.length)];
+        const q2 = arr[Math.floor(Math.random() * arr.length)];
+        setQuote(`${q1} ${q2}`);
       });
   }, [userId]);
 
+  // ---------------------- FETCH SESSIONS (GREEN DOT DATES) ----------------------
+  useEffect(() => {
+    if (!userId) return;
+
+    fetch(`http://127.0.0.1:5000/sessions/patient/${userId}`)
+      .then((res) => res.json())
+      .then((data) => setSessions(Array.isArray(data) ? data : []));
+  }, [userId]);
+
+  // ---------------------- GREEN DOT LOGIC ----------------------
+  const tileContent = ({ date }) => {
+    const dateStr = date.toISOString().split("T")[0];
+    const found = sessions.some((s) => s.date === dateStr);
+
+    if (!found) return null;
+
+    return (
+      <div className="flex justify-center items-center mt-1">
+        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+      </div>
+    );
+  };
+
   return (
-    <div className="w-full max-w-3xl mx-auto mt-10 p-6 bg-green-50 rounded-2xl shadow-lg text-center">
-      <h1 className="text-3xl font-bold text-green-700">Hi {userName}! 👋</h1>
+    <div className="w-[70vw] mx-auto mt-12">
+      {/* ------------------ MOOD BOX ------------------ */}
+      <div
+        className={`p-12 rounded-3xl shadow-2xl bg-gradient-to-b ${
+          moodColors[mood] || moodColors["None"]
+        } text-center transition-all duration-700`}
+      >
+        <h1 className="text-3xl font-extrabold text-gray-800 mb-8 tracking-tight">
+          Hi {userName}! 👋
+        </h1>
 
-      <p className="text-lg text-gray-700 mt-4 italic">
-        {quote}
-      </p>
-
-      {mood === "None" && (
-        <p className="mt-6 text-green-700 font-semibold">
-          Don't forget to journal today, {userName}! 📝
+        <p className="text-xl font-semibold text-gray-700 leading-relaxed italic animate-fadeIn max-w-4xl mx-auto">
+          “{quote}”
         </p>
-      )}
+
+        {mood === "None" && (
+          <p className="mt-10 text-2xl text-green-700 font-bold">
+            Don't forget to journal today, {userName}! 📝
+          </p>
+        )}
+
+        <style>{`
+          .animate-fadeIn {
+            animation: fadeIn 0.6s ease-in-out;
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+      </div>
+
+      {/* ------------------ SMALL CALENDAR ------------------ */}
+      <div className="mt-10 flex justify-start">
+        <div
+          className="p-6 bg-white/70 backdrop-blur-md border border-gray-200 shadow-lg rounded-2xl 
+                    cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 
+                    w-[330px]"
+          onClick={() => navigate("/patient/sessions")}
+        >
+          {/* Title */}
+          <h2 className="text-xl font-semibold mb-5 text-gray-800 tracking-wide">
+            Your Sessions
+          </h2>
+
+          {/* Calendar Container */}
+          <div className="flex justify-center">
+            <div className="scale-95">
+              <Calendar
+                value={value}
+                onChange={setValue}
+                tileContent={tileContent}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
