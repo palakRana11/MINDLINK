@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from pymongo import MongoClient
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from bson import ObjectId
 from datetime import datetime
 from cryptography.fernet import Fernet
@@ -47,8 +48,8 @@ client = genai.Client()  # reads GEMINI_API_KEY internally
 # --------------------------------
 # MongoDB Connection
 # --------------------------------
-client = MongoClient(os.getenv("MONGO_URI"))
-db = client['MINDLINKDB']
+database = MongoClient(os.getenv("MONGO_URI"))
+db = database['MINDLINKAI']
 patients_col = db['Patient']
 doctors_col = db['Doctor']
 journals_col = db['Journals']
@@ -64,13 +65,24 @@ fernet = Fernet(ENCRYPTION_KEY.encode())
 # Sentiment Analyzer Setup
 # --------------------------------
 custom_words = {
+    # Negative emotions (stronger to moderate)
     "raged": -5.0, "angry": -4.0, "furious": -4.5, "mad": -3.5,
-    "annoyed": -3.0, "irritated": -3.0, "hate": -3.8, "upset": -3.0,
-    "depressed": -3.5, "heartbroken": -3.5, "hopeless": -3.0,
-    "lonely": -2.8, "sad": -2.5,
-    "happy": 3.0, "joyful": 3.2, "cheerful": 2.8, "excited": 2.5,
-    "relaxed": 2.0, "content": 2.0, "grateful": 2.5 , "anxious": -0.5
+    "annoyed": -3.0, "irritated": -3.0, "hate": -4.0, "upset": -3.0,
+    "depressed": -4.0, "heartbroken": -4.5, "hopeless": -4.0,
+    "lonely": -3.0, "sad": -2.5, "frustrated": -3.2, "disappointed": -2.8,
+    "anxious": -2.0, "stressed": -2.5, "guilty": -3.0, "overwhelmed": -3.5,
+    "jealous": -3.2, "confused": -2.0, "hurt": -3.5, "fearful": -3.0,
+    
+    # Positive emotions (stronger to moderate)
+    "happy": 3.5, "joyful": 4.0, "cheerful": 3.5, "excited": 3.8,
+    "relaxed": 2.5, "content": 2.5, "grateful": 3.2, "optimistic": 3.0,
+    "hopeful": 3.0, "proud": 3.5, "love": 4.0, "satisfied": 3.0,
+    "playful": 2.8, "peaceful": 2.5, "enthusiastic": 3.5, "elated": 4.2,
+    
+    # Neutral or mild words
+    "okay": 0.5, "fine": 0.5, "tired": -1.0, "bored": -1.5
 }
+
 nltk.download('vader_lexicon')
 sentiment_analyzer = SentimentIntensityAnalyzer()
 sentiment_analyzer.lexicon.update(custom_words)

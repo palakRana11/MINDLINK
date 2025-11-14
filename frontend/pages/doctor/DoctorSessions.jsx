@@ -16,6 +16,7 @@ export default function DoctorSessions() {
   const [editDateByDoctor, setEditDateByDoctor] = useState("");
   const [editTimeByDoctor, setEditTimeByDoctor] = useState("");
 
+  // ---------- FETCH DATA ----------
   useEffect(() => {
     fetch(`http://127.0.0.1:5000/doctor/${doctorId}/patients`)
       .then((res) => res.json())
@@ -26,9 +27,32 @@ export default function DoctorSessions() {
       .then((data) => setSessions(Array.isArray(data) ? data : []));
   }, [doctorId]);
 
-  // ✅ FIXED DATE ISSUE — timezone safe
+  // ---------- DATE FORMATTING ----------
+  const formatDate = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // ---------- PAST DATE/TIME CHECK ----------
+  const isPastDateTime = (d = selectedDate, t = time) => {
+    if (!t) return false;
+    const [hour, minute] = t.split(":").map(Number);
+    const selected = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      hour,
+      minute
+    );
+    return selected.getTime() < new Date().getTime();
+  };
+
+  // ---------- CREATE SESSION ----------
   const handleCreateSession = async () => {
-    const formatted = selectedDate.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    if (!patientId || !time) return alert("Select patient and time.");
+    if (isPastDateTime()) return alert("Cannot book past date/time.");
 
     const res = await fetch("http://127.0.0.1:5000/session/create", {
       method: "POST",
@@ -36,7 +60,7 @@ export default function DoctorSessions() {
       body: JSON.stringify({
         doctor_id: doctorId,
         patient_id: patientId,
-        date: formatted,
+        date: formatDate(selectedDate),
         time,
         created_by: "doctor",
       }),
@@ -47,6 +71,7 @@ export default function DoctorSessions() {
     window.location.reload();
   };
 
+  // ---------- STATUS CHANGE ----------
   const handleStatusChange = async (id, status) => {
     await fetch(`http://127.0.0.1:5000/session/${id}/update`, {
       method: "PATCH",
@@ -57,10 +82,12 @@ export default function DoctorSessions() {
     window.location.reload();
   };
 
+  // ---------- DOCTOR EDIT REQUEST ----------
   const handleDoctorEditRequest = async (sessionId) => {
-    if (!editDateByDoctor || !editTimeByDoctor) {
+    if (!editDateByDoctor || !editTimeByDoctor)
       return alert("Please choose new date and time.");
-    }
+    if (isPastDateTime(new Date(editDateByDoctor), editTimeByDoctor))
+      return alert("Cannot request past date/time.");
 
     const res = await fetch(`http://127.0.0.1:5000/session/${sessionId}/edit`, {
       method: "PATCH",
@@ -78,6 +105,7 @@ export default function DoctorSessions() {
     window.location.reload();
   };
 
+  // ---------- RESPOND TO PATIENT EDIT ----------
   const handleRespondEdit = async (sessionId, decision) => {
     const res = await fetch(
       `http://127.0.0.1:5000/session/${sessionId}/edit/decision`,
@@ -96,6 +124,7 @@ export default function DoctorSessions() {
     window.location.reload();
   };
 
+  // ---------- TIME FORMATTER ----------
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [hour, minute] = timeStr.split(":");
@@ -105,8 +134,9 @@ export default function DoctorSessions() {
     return `${formattedHour}:${minute} ${ampm}`;
   };
 
+  // ---------- CALENDAR TOOLTIP ----------
   const tileContent = ({ date }) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDate(date);
     const dateSessions = sessions.filter((s) => s.date === dateStr);
 
     if (dateSessions.length === 0) return null;
@@ -121,10 +151,7 @@ export default function DoctorSessions() {
       .join("\n");
 
     return (
-      <div
-        title={tooltipText}
-        className="flex justify-center items-center mt-1"
-      >
+      <div className="flex justify-center items-center mt-1" title={tooltipText}>
         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
       </div>
     );
@@ -137,17 +164,20 @@ export default function DoctorSessions() {
       </h2>
 
       <div className="flex flex-col md:flex-row gap-6">
+        {/* CALENDAR */}
         <div className="flex-1 bg-white p-4 rounded-xl border border-[#e2dfd0]">
           <Calendar
             onChange={setSelectedDate}
             value={selectedDate}
             tileContent={tileContent}
+            minDate={new Date()}
           />
           <p className="text-center mt-2 text-gray-600">
             Selected: {selectedDate.toDateString()}
           </p>
         </div>
 
+        {/* ADD SESSION */}
         <div className="flex-1">
           <h3 className="text-lg font-semibold mb-3">Add New Session</h3>
 
@@ -178,6 +208,7 @@ export default function DoctorSessions() {
         </div>
       </div>
 
+      {/* ALL SESSIONS */}
       <div className="mt-8">
         <h3 className="text-xl font-semibold mb-3 text-[#2f4f4f]">
           📋 All Sessions
@@ -196,11 +227,11 @@ export default function DoctorSessions() {
                     {s.date} at {formatTime(s.time)}
                   </p>
 
+                  {/* EDIT REQUEST INFO */}
                   {s.edit_request && s.edit_request.new_date && (
                     <div className="mt-2 text-sm bg-gray-50 rounded p-2 border border-gray-100">
                       <p className="text-xs text-gray-700">
-                        Edit requested by{" "}
-                        <strong>{s.edit_request.requested_by}</strong>
+                        Edit requested by {s.edit_request.requested_by}
                       </p>
                       <p className="text-xs text-gray-600">
                         New: {s.edit_request.new_date} at{" "}
@@ -211,79 +242,78 @@ export default function DoctorSessions() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {s.status === "edit_requested" &&
-                  s.edit_request &&
-                  s.edit_request.requested_by === "patient" ? (
+                  {/* SHOW ACCEPT/REJECT BUTTONS ONLY FOR INITIAL PATIENT REQUEST */}
+                  {s.status === "pending" && s.created_by === "patient" && (
                     <>
                       <button
                         className="text-green-600 hover:underline"
-                        onClick={() => handleRespondEdit(s.id, "accept")}
-                      >
-                        Accept Edit
-                      </button>
-                      <button
-                        className="text-red-600 hover:underline"
-                        onClick={() => handleRespondEdit(s.id, "reject")}
-                      >
-                        Reject Edit
-                      </button>
-                    </>
-                  ) : null}
-
-                  {s.status === "pending" && s.created_by === "patient" ? (
-                    <>
-                      <button
-                        className="text-green-600 mr-3 hover:underline"
-                        onClick={() =>
-                          handleStatusChange(s.id, "accepted")
-                        }
+                        onClick={() => handleStatusChange(s.id, "accepted")}
                       >
                         Accept
                       </button>
                       <button
                         className="text-red-600 hover:underline"
-                        onClick={() =>
-                          handleStatusChange(s.id, "rejected")
-                        }
+                        onClick={() => handleStatusChange(s.id, "rejected")}
                       >
                         Reject
                       </button>
                     </>
-                  ) : (
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm ${
-                        s.status === "accepted"
-                          ? "bg-green-100 text-green-700"
-                          : s.status === "rejected"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {s.status}
-                    </span>
                   )}
 
+                  {/* SHOW ACCEPT/REJECT FOR PATIENT EDIT REQUEST */}
+                  {s.status === "edit_requested" &&
+                    s.edit_request?.requested_by === "patient" && (
+                      <>
+                        <button
+                          className="text-green-600 hover:underline"
+                          onClick={() => handleRespondEdit(s.id, "accept")}
+                        >
+                          Accept Edit
+                        </button>
+                        <button
+                          className="text-red-600 hover:underline"
+                          onClick={() => handleRespondEdit(s.id, "reject")}
+                        >
+                          Reject Edit
+                        </button>
+                      </>
+                    )}
+
+                  {/* STATUS BADGE */}
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      s.status === "accepted"
+                        ? "bg-green-100 text-green-700"
+                        : s.status === "rejected"
+                        ? "bg-red-100 text-red-700"
+                        : s.status === "pending"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : s.status === "edit_requested"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {s.status.charAt(0).toUpperCase() +
+                      s.status.slice(1).replace("_", " ")}
+                  </span>
+
+                  {/* DOCTOR EDIT REQUEST FORM */}
                   {editingSession === s.id ? (
                     <div className="flex items-center gap-2">
                       <input
                         type="date"
                         className="border p-1 rounded"
-                        onChange={(e) =>
-                          setEditDateByDoctor(e.target.value)
-                        }
+                        onChange={(e) => setEditDateByDoctor(e.target.value)}
+                        min={formatDate(new Date())}
                       />
                       <input
                         type="time"
                         className="border p-1 rounded"
-                        onChange={(e) =>
-                          setEditTimeByDoctor(e.target.value)
-                        }
+                        onChange={(e) => setEditTimeByDoctor(e.target.value)}
                       />
                       <button
                         className="text-green-600 font-semibold"
-                        onClick={() =>
-                          handleDoctorEditRequest(s.id)
-                        }
+                        onClick={() => handleDoctorEditRequest(s.id)}
                       >
                         ✅ Send
                       </button>
@@ -307,9 +337,7 @@ export default function DoctorSessions() {
             ))}
           </div>
         ) : (
-          <p className="text-gray-500 italic text-center">
-            No sessions yet.
-          </p>
+          <p className="text-gray-500 italic text-center">No sessions yet.</p>
         )}
       </div>
     </div>

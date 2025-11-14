@@ -18,7 +18,24 @@ export default function Sessions() {
 
   // ---------- FIXED DATE FORMAT ----------
   const formatDate = (d) => {
-    return d.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`; // YYYY-MM-DD
+  };
+
+  // ---------- CHECK PAST DATE/TIME ----------
+  const isPastDateTime = () => {
+    if (!time) return false;
+    const [hour, minute] = time.split(":").map(Number);
+    const selected = new Date(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth(),
+      selectedDate.getDate(),
+      hour,
+      minute
+    );
+    return selected < new Date();
   };
 
   useEffect(() => {
@@ -33,6 +50,8 @@ export default function Sessions() {
 
   // ------------------ CREATE SESSION ------------------
   const handleCreateSession = async () => {
+    if (isPastDateTime()) return alert("Cannot book past date/time!");
+
     const res = await fetch("http://127.0.0.1:5000/session/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,14 +68,27 @@ export default function Sessions() {
     window.location.reload();
   };
 
-  // -------------------- STATUS CHANGE --------------------
-  const handleStatusChange = async (id, status) => {
-    await fetch(`http://127.0.0.1:5000/session/${id}/update`, {
+  // -------------------- STATUS CHANGE (ACCEPT/REJECT SESSION OR EDIT) --------------------
+  const handleStatusChange = async (id, status, type) => {
+    // type = 'session' or 'edit'
+    const endpoint =
+      type === "edit"
+        ? `http://127.0.0.1:5000/session/${id}/edit/decision`
+        : `http://127.0.0.1:5000/session/${id}/update`;
+
+    const body =
+      type === "edit"
+        ? { decision: status, decided_by: "patient" }
+        : { status };
+
+    const res = await fetch(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     });
-    alert(`Session ${status}`);
+
+    const data = await res.json();
+    alert(data.message || `${type === "edit" ? "Edit" : "Session"} ${status}ed`);
     window.location.reload();
   };
 
@@ -78,24 +110,6 @@ export default function Sessions() {
     const data = await res.json();
     alert(data.message || "Edit request sent");
     setEditingSession(null);
-    window.location.reload();
-  };
-
-  // -------------------- PATIENT RESPONSE TO DOCTOR EDIT --------------------
-  const handleRespondEdit = async (sessionId, decision) => {
-    const res = await fetch(
-      `http://127.0.0.1:5000/session/${sessionId}/edit/decision`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision,
-          decided_by: "patient",
-        }),
-      }
-    );
-    const data = await res.json();
-    alert(data.message || `Edit ${decision}ed`);
     window.location.reload();
   };
 
@@ -132,23 +146,21 @@ export default function Sessions() {
     );
   };
 
-  // ---------------------------------------------------------
   // ----------------------- UI START -------------------------
-  // ---------------------------------------------------------
-
   return (
     <div className="max-w-4xl mx-auto p-8 bg-[#fdfbf9] rounded-3xl shadow-lg">
       <h2 className="text-2xl font-semibold text-center mb-6 text-[#2f4f4f]">
         📅 My Therapy Sessions
       </h2>
 
-      {/* ------------ CALENDAR + REQUEST NEW SESSION ------------ */}
+      {/* CALENDAR + REQUEST NEW SESSION */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 bg-white p-4 rounded-xl border border-[#e2dfd0]">
           <Calendar
             onChange={setSelectedDate}
             value={selectedDate}
             tileContent={tileContent}
+            minDate={new Date()}
           />
           <p className="text-center mt-2 text-gray-600">
             Selected: {selectedDate.toDateString()}
@@ -180,13 +192,19 @@ export default function Sessions() {
           <button
             onClick={handleCreateSession}
             className="bg-green-600 text-white w-full py-2 rounded-lg hover:bg-green-700"
+            disabled={!doctorId || !time || isPastDateTime()}
           >
             Send Request
           </button>
+          {isPastDateTime() && (
+            <p className="text-red-500 text-sm mt-1">
+              Cannot book past date/time.
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ------------ ALL SESSIONS ------------ */}
+      {/* ALL SESSIONS */}
       <div className="mt-8">
         <h3 className="text-xl font-semibold mb-3 text-[#2f4f4f]">
           🧾 All Sessions
@@ -223,20 +241,38 @@ export default function Sessions() {
 
                 <div className="flex items-center gap-3">
                   {/* ACCEPT/REJECT doctor edit request */}
-                  {s.status === "edit_requested" &&
-                  s.edit_request?.requested_by === "doctor" ? (
+                  {s.edit_request?.requested_by === "doctor" ? (
                     <>
                       <button
                         className="text-green-600 hover:underline"
-                        onClick={() => handleRespondEdit(s.id, "accept")}
+                        onClick={() => handleStatusChange(s.id, "accept", "edit")}
                       >
                         Accept Edit
                       </button>
                       <button
                         className="text-red-600 hover:underline"
-                        onClick={() => handleRespondEdit(s.id, "reject")}
+                        onClick={() => handleStatusChange(s.id, "reject", "edit")}
                       >
                         Reject Edit
+                      </button>
+                    </>
+                  ) : s.status === "pending" && s.created_by === "doctor" ? (
+                    <>
+                      <button
+                        className="text-green-600 hover:underline"
+                        onClick={() =>
+                          handleStatusChange(s.id, "accepted", "session")
+                        }
+                      >
+                        Accept Request
+                      </button>
+                      <button
+                        className="text-red-600 hover:underline"
+                        onClick={() =>
+                          handleStatusChange(s.id, "rejected", "session")
+                        }
+                      >
+                        Reject Request
                       </button>
                     </>
                   ) : (
@@ -249,7 +285,7 @@ export default function Sessions() {
                           : "bg-yellow-100 text-yellow-700"
                       }`}
                     >
-                      {s.status}
+                      {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                     </span>
                   )}
 
@@ -260,6 +296,7 @@ export default function Sessions() {
                         type="date"
                         className="border p-1 rounded"
                         onChange={(e) => setEditDateByPatient(e.target.value)}
+                        min={formatDate(new Date())}
                       />
                       <input
                         type="time"
