@@ -3,6 +3,7 @@ import { UserContext } from "../../src/context/UserContext";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
+import Report from "../../src/components/Report";
 import { useNavigate } from "react-router-dom";
 
 function Dashboard() {
@@ -298,6 +299,10 @@ function Dashboard() {
           </div>
         </div>
       </div>
+      {/* ------------------ REPORT SECTION ------------------ */}
+    <div className="mt-10">
+      <Report patientId={userId} doctorId={loggedUser?.assigned_doctor_id} />
+    </div>
     </div>
   );
 }

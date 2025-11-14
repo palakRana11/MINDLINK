@@ -54,6 +54,8 @@ patients_col = db['Patient']
 doctors_col = db['Doctor']
 journals_col = db['Journals']
 doctor_patients_col = db['DoctorPatients']  
+reports_col = db['Reports']
+
 
 # --------------------------------
 # Encryption Setup
@@ -1042,6 +1044,72 @@ def get_today_mood(patient_id):
     except Exception as e:
         print("Error fetching today's mood:", e)
         return jsonify({"error": str(e)}), 500
+
+
+# --------------------------------
+# CREATE OR UPDATE A REPORT
+# --------------------------------
+@app.route('/report', methods=['POST'])
+def add_or_update_report():
+    """Add a new report or update the existing report for a patient."""
+    data = request.get_json()
+    patient_id = data.get("patient_id")
+    title = data.get("title")
+    summary = data.get("summary")
+    details = data.get("details")
+
+    if not patient_id or not title or not summary or not details:
+        return jsonify({"error": "Missing report fields"}), 400
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    existing_report = reports_col.find_one({"patient_id": patient_id})
+
+    report_data = {
+        "title": title,
+        "summary": summary,
+        "details": details,
+        "updated_at": today_str
+    }
+
+    if existing_report:
+        reports_col.update_one(
+            {"_id": existing_report["_id"]},
+            {"$set": report_data}
+        )
+        action = "updated"
+    else:
+        report_data["patient_id"] = patient_id
+        report_data["created_at"] = today_str
+        reports_col.insert_one(report_data)
+        action = "added"
+
+    return jsonify({"message": f"Report {action} successfully!"}), 200
+
+
+
+
+# --------------------------------
+# FETCH A REPORT
+# --------------------------------
+@app.route('/report/<patient_id>', methods=['GET'])
+def get_report(patient_id):
+    """Fetch the latest report for a patient."""
+    report = reports_col.find_one({"patient_id": patient_id})
+
+    if not report:
+        return jsonify({"message": "No report found for this patient."}), 404
+
+    return jsonify({
+        "patient_id": report["patient_id"],
+        "report": {
+            "title": report.get("title"),
+            "summary": report.get("summary"),
+            "details": report.get("details")
+        },
+        "created_at": report.get("created_at"),
+        "updated_at": report.get("updated_at")
+    }), 200
 
 
 

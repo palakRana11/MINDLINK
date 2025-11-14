@@ -18,6 +18,13 @@ export default function PatientsInsights() {
   const [moodData, setMoodData] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Report form state
+  const [reportTitle, setReportTitle] = useState("");
+  const [reportSummary, setReportSummary] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [existingReport, setExistingReport] = useState(null);
+
   // Fetch doctor’s assigned patients
   useEffect(() => {
     if (doctorId) {
@@ -28,14 +35,15 @@ export default function PatientsInsights() {
     }
   }, [doctorId]);
 
-  // Fetch mood data when a patient is selected
+  // Fetch mood data and report when a patient is selected
   useEffect(() => {
     if (selectedPatient) {
       setLoading(true);
+
+      // Fetch mood data
       fetch(`http://127.0.0.1:5000/journal/${selectedPatient}`)
         .then((res) => res.json())
         .then((data) => {
-          // Convert sentiment score to class
           const processed = data.map((d) => ({
             date: new Date(d.date).toLocaleDateString("en-GB", {
               day: "numeric",
@@ -48,10 +56,28 @@ export default function PatientsInsights() {
         })
         .catch((err) => console.error("Error fetching mood data:", err))
         .finally(() => setLoading(false));
+
+      // Fetch latest report
+      fetch(`http://127.0.0.1:5000/report/${selectedPatient}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.report) {
+            const report = data.report;
+            setExistingReport(report);
+            setReportTitle(report.title || "");
+            setReportSummary(report.summary || "");
+            setReportDetails(report.details || "");
+          } else {
+            setExistingReport(null);
+            setReportTitle("");
+            setReportSummary("");
+            setReportDetails("");
+          }
+        })
+        .catch((err) => console.error("Error fetching report:", err));
     }
   }, [selectedPatient]);
 
-  // Mood classifier (same logic as backend)
   const classifyMood = (compound) => {
     if (compound >= 0.5) return "Happy 😊";
     else if (compound >= 0.1) return "Calm 😌";
@@ -60,12 +86,42 @@ export default function PatientsInsights() {
     else return "Angry 😠";
   };
 
-  // Calculate average mood score
   const avgScore =
     moodData.length > 0
       ? moodData.reduce((sum, d) => sum + d.sentiment_score, 0) /
         moodData.length
       : 0;
+
+  // ------------------ REPORT SUBMISSION ------------------
+  const handleReportSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedPatient) return alert("Select a patient first.");
+
+    setReportLoading(true);
+    const payload = {
+      patient_id: selectedPatient,
+      title: reportTitle,
+      summary: reportSummary,
+      details: reportDetails,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const res = await fetch(`http://127.0.0.1:5000/report`, {
+        method: "POST", // backend handles create/update
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      alert(data.message || "Report saved!");
+      setExistingReport(payload); // Update local state
+    } catch (err) {
+      console.error("Error saving report:", err);
+      alert("Failed to save report.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto mt-10 bg-[#fafaf9] rounded-3xl shadow-md border border-[#e2dfd0] p-8">
@@ -97,7 +153,8 @@ export default function PatientsInsights() {
         </p>
       ) : moodData.length === 0 ? (
         <p className="text-center text-gray-500 italic">
-          No journal data available for this patient yet. Encourage them to document their feelings.❤️
+          No journal data available for this patient yet. Encourage them to
+          document their feelings.❤️
         </p>
       ) : (
         <div className="mt-8">
@@ -151,6 +208,45 @@ export default function PatientsInsights() {
                 {avgScore.toFixed(2)}
               </span>
             </p>
+          </div>
+
+          {/* ---------------- REPORT FORM ---------------- */}
+          <div className="mt-10 border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4 text-[#3b4b3b]">
+              📝 Generate / Update Report
+            </h3>
+            <form className="space-y-4" onSubmit={handleReportSubmit}>
+              <input
+                type="text"
+                placeholder="Report Title"
+                className="w-full border p-2 rounded"
+                value={reportTitle}
+                onChange={(e) => setReportTitle(e.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Short Summary"
+                className="w-full border p-2 rounded"
+                value={reportSummary}
+                onChange={(e) => setReportSummary(e.target.value)}
+                required
+              />
+              <textarea
+                placeholder="Detailed Notes"
+                className="w-full border p-2 rounded h-40"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                className="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700"
+                disabled={reportLoading}
+              >
+                {reportLoading ? "Saving..." : "Save Report"}
+              </button>
+            </form>
           </div>
         </div>
       )}
