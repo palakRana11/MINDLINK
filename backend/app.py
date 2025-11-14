@@ -983,6 +983,39 @@ def gemini_chat():
         return jsonify({"error": "Failed to generate response. " + str(e)}), 500
 
 
+# --------------------------------
+# ✅ GET TODAY'S MOOD FOR A PATIENT
+# --------------------------------
+@app.route('/mood/today/<patient_id>', methods=['GET'])
+def get_today_mood(patient_id):
+    try:
+        # today's date in YYYY-MM-DD
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        entry = journals_col.find_one({
+            "patient_id": patient_id,
+            "date": today_str
+        })
+
+        if not entry:
+            return jsonify({
+                "date": today_str,
+                "mood": None,
+                "sentiment_score": None,
+                "message": "No journal entry for today."
+            }), 200
+
+        return jsonify({
+            "date": entry["date"],
+            "mood": entry.get("mood"),
+            "sentiment_score": entry.get("sentiment_score"),
+            "message": "Mood fetched successfully."
+        }), 200
+
+    except Exception as e:
+        print("Error fetching today's mood:", e)
+        return jsonify({"error": str(e)}), 500
+
 
 
 # --------------------------------
