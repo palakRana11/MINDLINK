@@ -127,18 +127,14 @@ export default function Sessions() {
     if (session.date !== today) return false;
 
     const [h, m] = session.time.split(":").map(Number);
-
     const sessionTime = new Date();
     sessionTime.setHours(h, m, 0, 0);
 
     const now = new Date();
-
     const minus10 = new Date(sessionTime.getTime() - 10 * 60000);
     const plus30 = new Date(sessionTime.getTime() + 30 * 60000);
 
-    if (now >= minus10 && now <= plus30) return true;
-
-    return false;
+    return now >= minus10 && now <= plus30;
   };
 
   const isSessionExpired = (s) => {
@@ -150,6 +146,31 @@ export default function Sessions() {
     const plus30 = new Date(sessionTime.getTime() + 30 * 60000);
 
     return now > plus30;
+  };
+
+  // ---------------------------
+  //      JOIN SESSION HANDLER
+  // ---------------------------
+  const handleJoinSession = async (sessionId) => {
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:5000/session/${sessionId}/start`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Failed to join session");
+        return;
+      }
+
+      if (data.join_url) {
+        window.open(data.join_url, "_blank");
+      }
+    } catch (error) {
+      console.error("Join error:", error);
+      alert("Error joining session");
+    }
   };
 
   // ---------------------------------
@@ -333,7 +354,7 @@ export default function Sessions() {
                                 : "bg-gray-400 cursor-not-allowed"
                             }`}
                             disabled={!isJoinEnabled(s)}
-                            onClick={() => alert("Joining session...")}
+                            onClick={() => handleJoinSession(s.id)}
                           >
                             Join Session
                           </button>

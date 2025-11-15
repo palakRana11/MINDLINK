@@ -3,14 +3,23 @@ from flask_cors import CORS
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from bson import ObjectId
-from datetime import datetime
-from cryptography.fernet import Fernet
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
 import bcrypt
-import nltk
-import os
-from dotenv import load_dotenv
+from cryptography.fernet import Fernet
+
 from datetime import datetime, timedelta
+import os
+import time
+import json
+import base64
+import requests
+
+from dotenv import load_dotenv
+
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+
 try:
     from google import genai
 except Exception as e:
@@ -55,6 +64,9 @@ doctors_col = db['Doctor']
 journals_col = db['Journals']
 doctor_patients_col = db['DoctorPatients']  
 reports_col = db['Reports']
+sessions_col = db["Sessions"]
+
+
 
 
 # --------------------------------
@@ -803,7 +815,6 @@ def create_session():
     if not all([doctor_id, patient_id, date, time, created_by]):
         return jsonify({"error": "Missing required fields"}), 400
 
-    sessions_col = db["Sessions"]
 
     # Prevent duplicate sessions for the same doctor on same date & time
     if sessions_col.find_one({"doctor_id": ObjectId(doctor_id), "date": date, "time": time}):
@@ -831,7 +842,7 @@ def create_session():
 # --------------------------------
 @app.route('/sessions/<role>/<user_id>', methods=['GET'])
 def get_sessions(role, user_id):
-    sessions_col = db["Sessions"]
+
     # Validate user_id before converting to ObjectId to avoid InvalidId exceptions
     if not user_id or not ObjectId.is_valid(user_id):
         return jsonify({"error": "Invalid or missing user_id"}), 400
@@ -896,7 +907,6 @@ def request_edit_session(session_id):
     if not all([new_date, new_time, requested_by]):
         return jsonify({"error": "Missing fields"}), 400
 
-    sessions_col = db["Sessions"]
     session = sessions_col.find_one({"_id": ObjectId(session_id)})
 
     if not session:
@@ -939,7 +949,6 @@ def handle_edit_request_decision(session_id):
     if decision not in ["accept", "reject"]:
         return jsonify({"error": "Invalid decision"}), 400
 
-    sessions_col = db["Sessions"]
     session = sessions_col.find_one({"_id": ObjectId(session_id)})
 
     if not session or "edit_request" not in session:
@@ -1111,7 +1120,137 @@ def get_report(patient_id):
         "updated_at": report.get("updated_at")
     }), 200
 
+# --------------------------------
+# CREATE ZOOM ACCESS TOKEN
+# --------------------------------
+ACCOUNT_ID = os.getenv("ZOOM_ACCOUNT_ID")
+CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
+CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET")
 
+
+def get_zoom_token():
+    url = f"https://zoom.us/oauth/token?grant_type=account_credentials&account_id={ACCOUNT_ID}"
+
+    auth_header = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {auth_header}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    res = requests.post(url, headers=headers)
+
+    if res.status_code != 200:
+        print("Zoom Token Error:", res.text)
+        return None
+
+    data = res.json()
+    return data["access_token"]
+
+
+# --------------------------------
+# CREATE ZOOM MEETING
+# --------------------------------
+@app.route("/create_zoom_meeting", methods=["POST"])
+def create_zoom_meeting():
+    data = request.json
+
+    topic = data.get("topic", "Therapy Session")
+    start_time = data.get("start_time")
+    doctor_id = data.get("doctor_id")
+    patient_id = data.get("patient_id")
+
+    token = get_zoom_token()      # <-- FIXED
+    if not token:
+        return jsonify({"error": "Failed to generate Zoom token"}), 500
+
+    url = "https://api.zoom.us/v2/users/me/meetings"
+
+    payload = {
+        "topic": topic,
+        "type": 2,
+        "start_time": start_time,
+        "duration": 45,
+        "settings": {
+            "join_before_host": True,
+            "waiting_room": False
+        }
+    }
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    zoom_data = response.json()
+
+    if "join_url" not in zoom_data:
+        return jsonify({"error": "Zoom API error", "details": zoom_data}), 500
+
+    join_link = zoom_data["join_url"]
+
+    sessions_col.insert_one({
+        "doctor_id": doctor_id,
+        "patient_id": patient_id,
+        "start_time": start_time,
+        "meeting_link": join_link,
+        "created_at": time.time()
+    })
+
+    return jsonify({
+        "message": "Zoom meeting created",
+        "join_url": join_link
+    }), 200
+
+# --------------------------------
+# START ZOOM SESSION
+# --------------------------------
+@app.route("/session/<session_id>/start", methods=["POST"])
+def start_session(session_id):
+    try:
+        obj_id = ObjectId(session_id)
+    except:
+        return jsonify({"error": "Invalid session ID"}), 400
+
+    session = sessions_col.find_one({"_id": obj_id})
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    # If meeting already exists
+    if session.get("meeting_link"):
+        return jsonify({"join_url": session["meeting_link"]}), 200
+
+    token = get_zoom_token()
+    if not token:
+        return jsonify({"error": "Failed to generate Zoom token"}), 500
+
+    url = "https://api.zoom.us/v2/users/me/meetings"
+    payload = {
+        "topic": "Therapy Session",
+        "type": 2,
+        "duration": 45,
+        "settings": {
+            "join_before_host": True,
+            "waiting_room": False
+        }
+    }
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    response = requests.post(url, headers=headers, json=payload)
+    zoom_data = response.json()
+
+    if "join_url" not in zoom_data:
+        return jsonify({"error": "Zoom API error", "details": zoom_data}), 500
+
+    join_url = zoom_data["join_url"]
+
+    sessions_col.update_one(
+        {"_id": obj_id},
+        {"$set": {"meeting_link": join_url}}
+    )
+
+    return jsonify({"join_url": join_url}), 200
 
 # --------------------------------
 # RUN SERVER

@@ -328,14 +328,20 @@ export default function DoctorSessions() {
                     s.date === formatDate(new Date()) &&
                     canJoin(s) &&
                     !isEnded(s) && (
-                      <a
-                        href={s.meeting_link || "#"}
-                        target="_blank"
+                      <button
                         className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm"
+                        onClick={async () => {
+                          const res = await fetch(`http://127.0.0.1:5000/session/${s.id}/start`, {
+                            method: "POST"
+                          });
+                          const data = await res.json();
+                          if (data.join_url) window.open(data.join_url, "_blank");
+                        }}
                       >
                         Join
-                      </a>
+                      </button>
                   )}
+
 
 
                   {/* DOCTOR EDIT REQUEST FORM */}

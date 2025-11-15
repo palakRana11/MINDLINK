@@ -6,3 +6,4 @@ python-dotenv
 cryptography
 nltk
 pymongo[srv]==3.12
+requests
