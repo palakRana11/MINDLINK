@@ -4,6 +4,7 @@ import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import Report from "../../src/components/Report";
+import Summary from "../../src/components/Summary";
 import { useNavigate } from "react-router-dom";
 
 function Dashboard() {
@@ -242,23 +243,23 @@ function Dashboard() {
   };
 
   return (
-    <div className="w-[70vw] mx-auto mt-12">
-      {/* ------------------ MOOD BOX ------------------ */}
+    <div className="w-[70vw] mx-auto mt-12 space-y-10">
+      {/* ------------------ Mood Box ------------------ */}
       <div
-        className={`p-12 rounded-3xl shadow-2xl bg-gradient-to-b ${
+        className={`p-10 rounded-3xl shadow-lg bg-gradient-to-b ${
           moodColors[mood] || moodColors["None"]
         } text-center transition-all duration-700`}
       >
-        <h1 className="text-3xl font-extrabold text-gray-800 mb-8 tracking-tight">
+        <h1 className="text-3xl font-extrabold text-gray-800 mb-6 tracking-tight">
           Hi {userName}! 👋
         </h1>
 
-        <p className="text-xl font-semibold text-gray-700 leading-relaxed italic animate-fadeIn max-w-4xl mx-auto">
+        <p className="text-lg font-medium text-gray-700 italic leading-relaxed max-w-3xl mx-auto animate-fadeIn">
           “{quote}”
         </p>
 
         {mood === "None" && (
-          <p className="mt-10 text-2xl text-green-700 font-bold">
+          <p className="mt-8 text-xl text-green-700 font-semibold">
             Don't forget to journal today, {userName}! 📝
           </p>
         )}
@@ -274,35 +275,33 @@ function Dashboard() {
         `}</style>
       </div>
 
-      {/* ------------------ SMALL CALENDAR ------------------ */}
-      <div className="mt-10 flex justify-start">
+      {/* ------------------ Calendar + Report ------------------ */}
+      <div className="flex gap-6">
+        {/* Calendar */}
         <div
-          className="p-6 bg-white/70 backdrop-blur-md border border-gray-200 shadow-lg rounded-2xl 
-                    cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 
-                    w-[330px]"
+          className="flex-shrink-0 p-5 bg-white/80 backdrop-blur-md border border-gray-200 shadow-md rounded-2xl w-[330px] hover:shadow-lg transition-all duration-300 cursor-pointer"
           onClick={() => navigate("/patient/sessions")}
         >
-          {/* Title */}
-          <h2 className="text-xl font-semibold mb-5 text-gray-800 tracking-wide">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800 tracking-wide">
             Your Sessions
           </h2>
-
-          {/* Calendar Container */}
           <div className="flex justify-center">
             <div className="scale-95">
-              <Calendar
-                value={value}
-                onChange={setValue}
-                tileContent={tileContent}
-              />
+              <Calendar value={value} onChange={setValue} tileContent={tileContent} />
             </div>
           </div>
         </div>
+
+        {/* Report */}
+        <div className="flex-1 p-5 bg-white/80 backdrop-blur-md border border-gray-200 shadow-md rounded-2xl max-h-[520px] overflow-y-auto">
+          <Report patientId={userId} doctorId={loggedUser?.assigned_doctor_id} />
+        </div>
       </div>
-      {/* ------------------ REPORT SECTION ------------------ */}
-    <div className="mt-10">
-      <Report patientId={userId} doctorId={loggedUser?.assigned_doctor_id} />
-    </div>
+
+      {/* ------------------ AI Summary ------------------ */}
+      <div className="p-5 bg-white/80 backdrop-blur-md border border-gray-200 shadow-md rounded-2xl overflow-auto">
+        <Summary patientId={userId} />
+      </div>
     </div>
   );
 }

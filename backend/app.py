@@ -1252,6 +1252,79 @@ def start_session(session_id):
 
     return jsonify({"join_url": join_url}), 200
 
+
+
+# -------------------------------- 
+# REPORT SUMMARY
+# --------------------------------
+@app.route("/report/summary/<patient_id>", methods=["GET"])
+def report_summary(patient_id):
+    """Fetch the report, send it to Gemini AI, and return a concise summary + recommendations in points."""
+    
+    report = reports_col.find_one({"patient_id": patient_id})
+    if not report:
+        return jsonify({"error": "No report found for this patient."}), 404
+
+    report_text = f"""
+    Title: {report.get('title', 'No Title')}
+    Summary: {report.get('summary', 'No Summary')}
+    Details: {report.get('details', 'No Details')}
+    """
+
+    prompt = (
+        "You are a supportive mental health assistant. Analyze the following patient report and provide:\n"
+        "1. A concise summary in 3-5 bullet points, highlighting mood trends and notable observations.\n"
+        "2. Practical and positive recommendations or next steps for the patient, in 1-3 bullet points. "
+        "Even if the report does not indicate any issues, provide helpful suggestions for maintaining or improving well-being.\n\n"
+        "Return clearly labeled sections: 'Summary:' and 'Recommendations:' as bullet points, without any extra JSON formatting.\n\n"
+        f"Patient Report:\n{report_text}"
+    )
+
+    try:
+        client = genai.Client()
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        full_text = response.text.strip()
+        summary_text = ""
+        recommendations_text = ""
+
+        # Robust splitting logic
+        if "Summary:" in full_text and "Recommendations:" in full_text:
+            summary_text = full_text.split("Summary:", 1)[1].split("Recommendations:", 1)[0].strip()
+            recommendations_text = full_text.split("Recommendations:", 1)[1].strip()
+        elif "Summary:" in full_text:
+            summary_text = full_text.split("Summary:", 1)[1].strip()
+            lines = full_text.split("\n")
+            recommendations_text = "\n".join(lines[-3:]).strip()
+        else:
+            lines = [line.strip() for line in full_text.split("\n") if line.strip()]
+            mid = len(lines)//2
+            summary_text = "\n".join(lines[:mid])
+            recommendations_text = "\n".join(lines[mid:])
+
+        # Fallbacks
+        if not summary_text:
+            summary_text = "Summary not generated. Please review the report manually."
+        if not recommendations_text:
+            recommendations_text = "No recommendations generated. Encourage patient positively."
+
+        # Return in React-compatible keys
+        result = {
+            "summary": summary_text,
+            "recommendations": recommendations_text
+        }
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        print("Gemini API Error:", e)
+        return jsonify({"error": "Failed to generate AI summary: " + str(e)}), 500
+
+
+
 # --------------------------------
 # RUN SERVER
 # --------------------------------
