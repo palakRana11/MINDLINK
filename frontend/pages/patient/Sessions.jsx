@@ -16,15 +16,13 @@ export default function Sessions() {
   const [editDateByPatient, setEditDateByPatient] = useState("");
   const [editTimeByPatient, setEditTimeByPatient] = useState("");
 
-  // ---------- FIXED DATE FORMAT ----------
   const formatDate = (d) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`; // YYYY-MM-DD
+    return `${year}-${month}-${day}`;
   };
 
-  // ---------- CHECK PAST DATE/TIME ----------
   const isPastDateTime = () => {
     if (!time) return false;
     const [hour, minute] = time.split(":").map(Number);
@@ -48,7 +46,6 @@ export default function Sessions() {
       .then((data) => setAvailableDoctors(Array.isArray(data) ? data : []));
   }, [patientId]);
 
-  // ------------------ CREATE SESSION ------------------
   const handleCreateSession = async () => {
     if (isPastDateTime()) return alert("Cannot book past date/time!");
 
@@ -63,14 +60,13 @@ export default function Sessions() {
         created_by: "patient",
       }),
     });
+
     const data = await res.json();
     alert(data.message || "Created");
     window.location.reload();
   };
 
-  // -------------------- STATUS CHANGE (ACCEPT/REJECT SESSION OR EDIT) --------------------
   const handleStatusChange = async (id, status, type) => {
-    // type = 'session' or 'edit'
     const endpoint =
       type === "edit"
         ? `http://127.0.0.1:5000/session/${id}/edit/decision`
@@ -92,7 +88,6 @@ export default function Sessions() {
     window.location.reload();
   };
 
-  // -------------------- PATIENT EDIT REQUEST --------------------
   const handlePatientEditRequest = async (sessionId) => {
     if (!editDateByPatient || !editTimeByPatient)
       return alert("Please choose new date and time.");
@@ -113,7 +108,6 @@ export default function Sessions() {
     window.location.reload();
   };
 
-  // ----------- TIME FORMATTER -----------
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [hour, minute] = timeStr.split(":");
@@ -123,7 +117,43 @@ export default function Sessions() {
     return `${formattedHour}:${minute} ${ampm}`;
   };
 
-  // ----------- TOOLTIP DOTS ON CALENDAR -----------
+  // ---------------------------
+  //        JOIN BUTTON LOGIC
+  // ---------------------------
+  const isJoinEnabled = (session) => {
+    if (session.status !== "accepted") return false;
+
+    const today = formatDate(new Date());
+    if (session.date !== today) return false;
+
+    const [h, m] = session.time.split(":").map(Number);
+
+    const sessionTime = new Date();
+    sessionTime.setHours(h, m, 0, 0);
+
+    const now = new Date();
+
+    const minus10 = new Date(sessionTime.getTime() - 10 * 60000);
+    const plus30 = new Date(sessionTime.getTime() + 30 * 60000);
+
+    if (now >= minus10 && now <= plus30) return true;
+
+    return false;
+  };
+
+  const isSessionExpired = (s) => {
+    const [h, m] = s.time.split(":").map(Number);
+    const sessionTime = new Date();
+    sessionTime.setHours(h, m, 0, 0);
+
+    const now = new Date();
+    const plus30 = new Date(sessionTime.getTime() + 30 * 60000);
+
+    return now > plus30;
+  };
+
+  // ---------------------------------
+
   const tileContent = ({ date }) => {
     const dateStr = formatDate(date);
     const dateSessions = sessions.filter((s) => s.date === dateStr);
@@ -146,7 +176,6 @@ export default function Sessions() {
     );
   };
 
-  // ----------------------- UI START -------------------------
   return (
     <div className="max-w-4xl mx-auto p-8 bg-[#fdfbf9] rounded-3xl shadow-lg">
       <h2 className="text-2xl font-semibold text-center mb-6 text-[#2f4f4f]">
@@ -223,7 +252,6 @@ export default function Sessions() {
                     {s.date} at {formatTime(s.time)}
                   </p>
 
-                  {/* DOCTOR EDIT REQUEST */}
                   {s.edit_request &&
                     s.edit_request.new_date &&
                     s.edit_request.requested_by === "doctor" && (
@@ -240,7 +268,7 @@ export default function Sessions() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* ACCEPT/REJECT doctor edit request */}
+                  {/* Accept/Reject doctor edit request */}
                   {s.edit_request?.requested_by === "doctor" ? (
                     <>
                       <button
@@ -288,6 +316,30 @@ export default function Sessions() {
                       {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                     </span>
                   )}
+
+                  {/* JOIN BUTTON */}
+                  {s.status === "accepted" &&
+                    s.date === formatDate(new Date()) && (
+                      <>
+                        {isSessionExpired(s) ? (
+                          <span className="text-gray-500 text-sm italic">
+                            Session Expired
+                          </span>
+                        ) : (
+                          <button
+                            className={`px-4 py-1 rounded-lg text-white ${
+                              isJoinEnabled(s)
+                                ? "bg-blue-600 hover:bg-blue-700"
+                                : "bg-gray-400 cursor-not-allowed"
+                            }`}
+                            disabled={!isJoinEnabled(s)}
+                            onClick={() => alert("Joining session...")}
+                          >
+                            Join Session
+                          </button>
+                        )}
+                      </>
+                    )}
 
                   {/* PATIENT EDIT REQUEST */}
                   {editingSession === s.id ? (

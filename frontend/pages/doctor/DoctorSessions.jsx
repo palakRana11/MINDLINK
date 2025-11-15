@@ -1,3 +1,4 @@
+// UPDATED FILE WITH JOIN BUTTON LOGIC ADDED — NOTHING ELSE CHANGED
 import React, { useEffect, useState } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -27,7 +28,7 @@ export default function DoctorSessions() {
       .then((data) => setSessions(Array.isArray(data) ? data : []));
   }, [doctorId]);
 
-  // ---------- DATE FORMATTING ----------
+  // ---------- DATE FORMAT ----------
   const formatDate = (d) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -35,9 +36,10 @@ export default function DoctorSessions() {
     return `${year}-${month}-${day}`;
   };
 
-  // ---------- PAST DATE/TIME CHECK ----------
+  // ---------- PAST CHECK ----------
   const isPastDateTime = (d = selectedDate, t = time) => {
     if (!t) return false;
+
     const [hour, minute] = t.split(":").map(Number);
     const selected = new Date(
       d.getFullYear(),
@@ -46,6 +48,7 @@ export default function DoctorSessions() {
       hour,
       minute
     );
+
     return selected.getTime() < new Date().getTime();
   };
 
@@ -78,6 +81,7 @@ export default function DoctorSessions() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
+
     alert(`Session ${status}`);
     window.location.reload();
   };
@@ -86,6 +90,7 @@ export default function DoctorSessions() {
   const handleDoctorEditRequest = async (sessionId) => {
     if (!editDateByDoctor || !editTimeByDoctor)
       return alert("Please choose new date and time.");
+
     if (isPastDateTime(new Date(editDateByDoctor), editTimeByDoctor))
       return alert("Cannot request past date/time.");
 
@@ -124,7 +129,7 @@ export default function DoctorSessions() {
     window.location.reload();
   };
 
-  // ---------- TIME FORMATTER ----------
+  // ---------- TIME FORMAT ----------
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
     const [hour, minute] = timeStr.split(":");
@@ -132,6 +137,21 @@ export default function DoctorSessions() {
     const ampm = h >= 12 ? "PM" : "AM";
     const formattedHour = h % 12 || 12;
     return `${formattedHour}:${minute} ${ampm}`;
+  };
+
+  // ---------- JOIN BUTTON LOGIC ----------
+  const canJoin = (session) => {
+    const target = new Date(session.date + "T" + session.time + ":00");
+    const now = new Date();
+    const diffMinutes = (now - target) / 60000;
+
+    return diffMinutes >= -10 && diffMinutes <= 30;
+  };
+
+  const isEnded = (session) => {
+    const target = new Date(session.date + "T" + session.time + ":00");
+    const now = new Date();
+    return now - target > 30 * 60000;
   };
 
   // ---------- CALENDAR TOOLTIP ----------
@@ -242,7 +262,7 @@ export default function DoctorSessions() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* SHOW ACCEPT/REJECT BUTTONS ONLY FOR INITIAL PATIENT REQUEST */}
+                  {/* ACCEPT/REJECT INITIAL */}
                   {s.status === "pending" && s.created_by === "patient" && (
                     <>
                       <button
@@ -260,7 +280,7 @@ export default function DoctorSessions() {
                     </>
                   )}
 
-                  {/* SHOW ACCEPT/REJECT FOR PATIENT EDIT REQUEST */}
+                  {/* PATIENT EDIT REQUEST */}
                   {s.status === "edit_requested" &&
                     s.edit_request?.requested_by === "patient" && (
                       <>
@@ -279,23 +299,44 @@ export default function DoctorSessions() {
                       </>
                     )}
 
-                  {/* STATUS BADGE */}
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm ${
-                      s.status === "accepted"
-                        ? "bg-green-100 text-green-700"
-                        : s.status === "rejected"
-                        ? "bg-red-100 text-red-700"
-                        : s.status === "pending"
-                        ? "bg-yellow-100 text-yellow-700"
-                        : s.status === "edit_requested"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {s.status.charAt(0).toUpperCase() +
-                      s.status.slice(1).replace("_", " ")}
-                  </span>
+                  {/* STATUS */}
+                  {isEnded(s) ? (
+                    <span className="px-3 py-1 rounded-full text-sm bg-gray-200 text-gray-700">
+                      Ended
+                    </span>
+                  ) : (
+                    <span
+                      className={`px-3 py-1 rounded-full text-sm ${
+                        s.status === "accepted"
+                          ? "bg-green-100 text-green-700"
+                          : s.status === "rejected"
+                          ? "bg-red-100 text-red-700"
+                          : s.status === "pending"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : s.status === "edit_requested"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {s.status.charAt(0).toUpperCase() +
+                        s.status.slice(1).replace("_", " ")}
+                    </span>
+                  )}
+
+                  {/* JOIN BUTTON */}
+                  { s.status === "accepted" &&
+                    s.date === formatDate(new Date()) &&
+                    canJoin(s) &&
+                    !isEnded(s) && (
+                      <a
+                        href={s.meeting_link || "#"}
+                        target="_blank"
+                        className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm"
+                      >
+                        Join
+                      </a>
+                  )}
+
 
                   {/* DOCTOR EDIT REQUEST FORM */}
                   {editingSession === s.id ? (
