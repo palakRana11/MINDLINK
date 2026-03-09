@@ -332,7 +332,9 @@ export default function DoctorSessions() {
                         className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm"
                         onClick={async () => {
                           const res = await fetch(`http://127.0.0.1:5000/session/${s.id}/start`, {
-                            method: "POST"
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ user_type: "doctor" })
                           });
                           const data = await res.json();
                           if (data.join_url) window.open(data.join_url, "_blank");

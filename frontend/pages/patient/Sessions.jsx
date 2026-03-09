@@ -151,27 +151,33 @@ export default function Sessions() {
   // ---------------------------
   //      JOIN SESSION HANDLER
   // ---------------------------
-  const handleJoinSession = async (sessionId) => {
-    try {
-      const res = await fetch(
-        `http://127.0.0.1:5000/session/${sessionId}/start`,
-        { method: "POST" }
-      );
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error || "Failed to join session");
-        return;
+const handleJoinSession = async (sessionId, userType) => {
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:5000/session/${sessionId}/start`,
+      { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_type: userType })
       }
+    );
 
-      if (data.join_url) {
-        window.open(data.join_url, "_blank");
-      }
-    } catch (error) {
-      console.error("Join error:", error);
-      alert("Error joining session");
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed to join session");
+      return;
     }
-  };
+
+    if (data.join_url) {
+      window.open(data.join_url, "_blank");
+    }
+  } catch (error) {
+    console.error("Join error:", error);
+    alert("Error joining session");
+  }
+};
+
 
   // ---------------------------------
 
@@ -354,7 +360,7 @@ export default function Sessions() {
                                 : "bg-gray-400 cursor-not-allowed"
                             }`}
                             disabled={!isJoinEnabled(s)}
-                            onClick={() => handleJoinSession(s.id)}
+                            onClick={() => handleJoinSession(s.id,"patient")}
                           >
                             Join Session
                           </button>

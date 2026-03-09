@@ -978,130 +978,6 @@ def handle_edit_request_decision(session_id):
         )
         return jsonify({"message": "Edit request rejected!"}), 200
     
-#---------------------
-#CHATBOT
-#---------------------
-
-@app.route("/gemini", methods=["POST"])
-def gemini_chat():
-    data = request.get_json()
-    user_input = data.get("prompt")
-    user_name = data.get("name", "friend")
-
-    if not user_input:
-        return jsonify({"error": "Prompt is required"}), 400
-
-    if genai is None:
-        return jsonify({"error": "Generative AI client not available."}), 503
-
-    if not os.getenv("GEMINI_API_KEY"):
-        return jsonify({"error": "GEMINI_API_KEY not set on server."}), 500
-
-    # Simplified prompt without quotes
-    prompt = (
-        f"You are a friendly mental health support buddy named 'MindBuddy'. "
-        f"Address the user by their first name and be empathetic and encouraging.\n\n"
-        f"User's name: {user_name}\n"
-        f"User says: {user_input}\n\n"
-        f"Respond as a supportive and kind buddy."
-    )
-
-    try:
-        client = genai.Client()  # API key loaded via env var
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-
-        return jsonify({"response": response.text.strip()}), 200
-
-    except Exception as e:
-        print("Gemini API Error:", e)
-        return jsonify({"error": "Failed to generate response. " + str(e)}), 500
-
-
-# --------------------------------
-# ✅ GET TODAY'S MOOD FOR A PATIENT
-# --------------------------------
-@app.route('/mood/today/<patient_id>', methods=['GET'])
-def get_today_mood(patient_id):
-    try:
-        # today's date in YYYY-MM-DD
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
-
-        entry = journals_col.find_one({
-            "patient_id": patient_id,
-            "date": today_str
-        })
-
-        if not entry:
-            return jsonify({
-                "date": today_str,
-                "mood": None,
-                "sentiment_score": None,
-                "message": "No journal entry for today."
-            }), 200
-
-        return jsonify({
-            "date": entry["date"],
-            "mood": entry.get("mood"),
-            "sentiment_score": entry.get("sentiment_score"),
-            "message": "Mood fetched successfully."
-        }), 200
-
-    except Exception as e:
-        print("Error fetching today's mood:", e)
-        return jsonify({"error": str(e)}), 500
-
-
-# --------------------------------
-# CREATE OR UPDATE A REPORT
-# --------------------------------
-@app.route('/report', methods=['POST'])
-def add_or_update_report():
-    """Add a new report or update the existing report for a patient."""
-    data = request.get_json()
-    patient_id = data.get("patient_id")
-    title = data.get("title")
-    summary = data.get("summary")
-    details = data.get("details")
-
-    if not patient_id or not title or not summary or not details:
-        return jsonify({"error": "Missing report fields"}), 400
-
-    today_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    
-    existing_report = reports_col.find_one({"patient_id": patient_id})
-
-    report_data = {
-        "title": title,
-        "summary": summary,
-        "details": details,
-        "updated_at": today_str
-    }
-
-    if existing_report:
-        reports_col.update_one(
-            {"_id": existing_report["_id"]},
-            {"$set": report_data}
-        )
-        action = "updated"
-    else:
-        report_data["patient_id"] = patient_id
-        report_data["created_at"] = today_str
-        reports_col.insert_one(report_data)
-        action = "added"
-
-    return jsonify({"message": f"Report {action} successfully!"}), 200
-
-
-
-
-# --------------------------------
-# FETCH A REPORT
-# --------------------------------
-@app.route('/report/<patient_id>', methods=['GET'])
 def get_report(patient_id):
     """Fetch the latest report for a patient."""
     report = reports_col.find_one({"patient_id": patient_id})
@@ -1251,6 +1127,151 @@ def start_session(session_id):
     )
 
     return jsonify({"join_url": join_url}), 200
+    
+#---------------------
+#CHATBOT
+#---------------------
+
+@app.route("/gemini", methods=["POST"])
+def gemini_chat():
+    data = request.get_json()
+    user_input = data.get("prompt")
+    user_name = data.get("name", "friend")
+
+    if not user_input:
+        return jsonify({"error": "Prompt is required"}), 400
+
+    if genai is None:
+        return jsonify({"error": "Generative AI client not available."}), 503
+
+    if not os.getenv("GEMINI_API_KEY"):
+        return jsonify({"error": "GEMINI_API_KEY not set on server."}), 500
+
+    # Simplified prompt without quotes
+    prompt = (
+        f"You are a friendly mental health support buddy named 'MindBuddy'. "
+        f"Address the user by their first name and be empathetic and encouraging.\n\n"
+        f"User's name: {user_name}\n"
+        f"User says: {user_input}\n\n"
+        f"Respond as a supportive and kind buddy."
+    )
+
+    try:
+        client = genai.Client()  # API key loaded via env var
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        return jsonify({"response": response.text.strip()}), 200
+
+    except Exception as e:
+        print("Gemini API Error:", e)
+        return jsonify({"error": "Failed to generate response. " + str(e)}), 500
+
+
+# --------------------------------
+# ✅ GET TODAY'S MOOD FOR A PATIENT
+# --------------------------------
+@app.route('/mood/today/<patient_id>', methods=['GET'])
+def get_today_mood(patient_id):
+    try:
+        # today's date in YYYY-MM-DD
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        entry = journals_col.find_one({
+            "patient_id": patient_id,
+            "date": today_str
+        })
+
+        if not entry:
+            return jsonify({
+                "date": today_str,
+                "mood": None,
+                "sentiment_score": None,
+                "message": "No journal entry for today."
+            }), 200
+
+        return jsonify({
+            "date": entry["date"],
+            "mood": entry.get("mood"),
+            "sentiment_score": entry.get("sentiment_score"),
+            "message": "Mood fetched successfully."
+        }), 200
+
+    except Exception as e:
+        print("Error fetching today's mood:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# --------------------------------
+# CREATE OR UPDATE A REPORT
+# --------------------------------
+@app.route('/report', methods=['POST'])
+def add_or_update_report():
+    """Add a new report or update the existing report for a patient."""
+    data = request.get_json()
+    patient_id = data.get("patient_id")
+    title = data.get("title")
+    summary = data.get("summary")
+    details = data.get("details")
+
+    if not patient_id or not title or not summary or not details:
+        return jsonify({"error": "Missing report fields"}), 400
+
+    today_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    existing_report = reports_col.find_one({"patient_id": patient_id})
+
+    report_data = {
+        "title": title,
+        "summary": summary,
+        "details": details,
+        "updated_at": today_str
+    }
+
+    if existing_report:
+        reports_col.update_one(
+            {"_id": existing_report["_id"]},
+            {"$set": report_data}
+        )
+        action = "updated"
+    else:
+        report_data["patient_id"] = patient_id
+        report_data["created_at"] = today_str
+        reports_col.insert_one(report_data)
+        action = "added"
+
+    return jsonify({"message": f"Report {action} successfully!"}), 200
+
+
+
+
+# --------------------------------
+# FETCH A REPORT
+# --------------------------------
+@app.route('/report/<patient_id>', methods=['GET'])
+def get_report(patient_id):
+    """Fetch the latest report for a patient."""
+    report = reports_col.find_one({"patient_id": patient_id})
+
+    if not report:
+        return jsonify({"message": "No report found for this patient."}), 404
+
+    return jsonify({
+        "patient_id": report["patient_id"],
+        "report": {
+            "title": report.get("title"),
+            "summary": report.get("summary"),
+            "details": report.get("details")
+        },
+        "created_at": report.get("created_at"),
+        "updated_at": report.get("updated_at")
+    }), 200
+
+
+
 
 
 
