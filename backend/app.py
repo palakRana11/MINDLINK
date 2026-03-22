@@ -1129,18 +1129,19 @@ def send_sos():
         sentiment = latest_journal.get("sentiment_score") if latest_journal else "N/A"
 
         # 📩 Construct message
-        sos_message = f"""
-🚨 EMERGENCY ALERT 🚨
+        sos_message = f"""🚨 EMERGENCY ALERT 🚨
 
 Patient: {patient.get('name')}
 Email: {patient.get('email')}
 Age: {patient.get('age')}
 
+Mood: {mood}
+Sentiment Score: {sentiment}
 
 Message: {custom_message if custom_message else "Immediate help required!"}
 
 Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
-        """
+"""
 
         # 📲 Send WhatsApp
         message = twilio_client.messages.create(
