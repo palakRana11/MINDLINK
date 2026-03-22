@@ -3,6 +3,7 @@ from flask_cors import CORS
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from bson import ObjectId
+from twilio.rest import Client
 
 import bcrypt
 from cryptography.fernet import Fernet
@@ -67,6 +68,13 @@ reports_col = db['Reports']
 sessions_col = db["Sessions"]
 
 
+#--------------------------------
+# TWILIO Setup
+#--------------------------------
+twilio_client = Client(
+    os.getenv("TWILIO_ACCOUNT_SID"),
+    os.getenv("TWILIO_AUTH_TOKEN")
+)
 
 
 # --------------------------------
@@ -94,7 +102,98 @@ custom_words = {
     "playful": 2.8, "peaceful": 2.5, "enthusiastic": 3.5, "elated": 4.2,
     
     # Neutral or mild words
-    "okay": 0.5, "fine": 0.5, "tired": -1.0, "bored": -1.5
+    "okay": 0.5, "fine": 0.5, "tired": -1.0, "bored": -1.5,
+
+     # Strong Negative (Angry / Frustrated)
+    "bakwaas": -4.0, "bekaar": -3.5, "faltu": -3.0, "ghatiya": -4.2,
+    "tatti": -4.5, "kharab": -3.5, "bura": -3.0, "gussa": -4.0,
+    "chidh": -3.2, "jhunjhlaahat": -3.5, "irritate": -3.0,
+    "frustrated": -3.5, "thak gaya": -2.5, "thak gayi": -2.5,
+    "dimag kharab": -4.0, "pareshan": -3.2, "tension": -3.0,
+    "dukhi": -3.5, "udass": -3.2, "rona aa raha": -3.8,
+    "hurt hua": -3.5, "bura lag raha": -3.5,
+
+    # Moderate Negative (Sad / Low mood)
+    "mann nahi": -2.5, "acha nahi lag raha": -2.8,
+    "low feel": -2.5, "thoda sad": -2.0,
+    "akela": -3.0, "akeli": -3.0,
+    "confuse hoon": -2.0, "samaj nahi aa raha": -2.2,
+    "dar lag raha": -3.0, "nervous hoon": -2.5,
+    "stress ho raha": -3.0, "overthink": -2.5,
+
+    # Positive (Happy / Excited)
+    "mast": 3.5, "badiya": 3.5, "zabardast": 4.2,
+    "awesome": 4.0, "maza aa gaya": 4.2,
+    "khush": 3.5, "bohot khush": 4.5,
+    "excited hoon": 3.8, "shandar": 4.0,
+    "solid": 3.5, "lit": 3.8,
+    "fun tha": 3.2, "enjoy kiya": 3.5,
+    "happy hoon": 3.5, "feeling good": 3.2,
+
+    # Calm / Mild Positive
+    "theek hoon": 1.5, "sab theek": 1.5,
+    "chill": 2.0, "relaxed hoon": 2.5,
+    "normal hai": 0.5, "adjust kar raha": 1.0,
+    "manageable": 1.2, "thik thak": 1.2,
+
+    # Neutral / Mixed
+    "dekhte hain": 0.2, "pata nahi": 0.0,
+    "jo hoga dekha jayega": 0.3,
+    "kuch khas nahi": -0.5,
+    "same hi hai": 0.0,
+    "bas chal raha hai": 0.5,
+
+    # Relationship / Emotional context
+    "miss kar raha": -2.5, "miss kar rahi": -2.5,
+    "yaad aa rahi": -2.8, "yaad aa raha": -2.8,
+    "pyaar": 3.8, "love hai": 4.0,
+    "care karta": 3.0, "care karti": 3.0,
+    "ignore kar raha": -2.5,
+    "ignore kar rahi": -2.5,
+
+    # Anxiety / Overthinking
+    "overthinking ho raha": -3.0,
+    "soch soch ke thak gaya": -3.2,
+    "darr lagta hai": -3.0,
+    "anxiety ho rahi": -3.5,
+    "panic ho raha": -3.8,
+
+    # Slang / Casual Hinglish
+    "scene kharab": -3.5,
+    "scene set": 3.5,
+    "jhakaas": 4.0,
+    "fadu": 4.2,
+    "timepass": 0.5,
+    "jugaad": 1.5,
+    "setting ho gayi": 3.5,
+
+    # Energy / Fatigue
+    "neend aa rahi": -1.5,
+    "soya nahi": -2.0,
+    "thaka hua": -2.0,
+    "lazy feel": -1.5,
+    "thak":-1.5,
+
+    # Motivation / Determination
+    "kar lunga": 2.5,
+    "kar lungi": 2.5,
+    "try kar raha": 2.0,
+    "give up nahi karunga": 3.5,
+    "fight karunga": 3.8,
+
+    # 📉 Failure / Negative outcomes
+    "fail ho gaya": -3.5,
+    "nahi hua": -2.5,
+    "bigad gaya": -3.0,
+    "khatam": -3.5,
+    "laga nahi": -2.0,
+
+    # 📈 Success / Achievement
+    "ho gaya": 3.0,
+    "kar liya": 3.5,
+    "mil gaya": 3.5,
+    "jeet gaya": 4.5,
+    "clear ho gaya": 4.2
 }
 
 nltk.download('vader_lexicon')
@@ -995,6 +1094,69 @@ def get_report(patient_id):
         "created_at": report.get("created_at"),
         "updated_at": report.get("updated_at")
     }), 200
+
+
+#-------------------------------
+# SEND SOS MESSAGE
+#--------------------------------
+@app.route('/sos', methods=['POST'])
+def send_sos():
+    try:
+        data = request.get_json()
+        patient_id = data.get("patient_id")
+        custom_message = data.get("message", "")
+
+        if not patient_id:
+            return jsonify({"error": "patient_id is required"}), 400
+
+        # 🔍 Fetch patient
+        patient = patients_col.find_one({"_id": ObjectId(patient_id)})
+        if not patient:
+            return jsonify({"error": "Patient not found"}), 404
+
+        # 📞 Get doctor phone from ENV
+        doctor_phone = os.getenv("DOCTOR_EMERGENCY_PHONE")
+        if not doctor_phone:
+            return jsonify({"error": "Doctor emergency phone not configured"}), 500
+
+        # 🧠 Optional: last mood (powerful for context)
+        latest_journal = journals_col.find_one(
+            {"patient_id": patient_id},
+            sort=[("date", -1)]
+        )
+
+        mood = latest_journal.get("mood") if latest_journal else "Unknown"
+        sentiment = latest_journal.get("sentiment_score") if latest_journal else "N/A"
+
+        # 📩 Construct message
+        sos_message = f"""
+🚨 EMERGENCY ALERT 🚨
+
+Patient: {patient.get('name')}
+Email: {patient.get('email')}
+Age: {patient.get('age')}
+
+
+Message: {custom_message if custom_message else "Immediate help required!"}
+
+Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+        """
+
+        # 📲 Send WhatsApp
+        message = twilio_client.messages.create(
+            body=sos_message,
+            from_='whatsapp:' + os.getenv("TWILIO_PHONE_NUMBER"),
+            to='whatsapp:' + doctor_phone
+        )
+
+        return jsonify({
+            "message": "🚨 SOS sent successfully!",
+            "twilio_sid": message.sid
+        }), 200
+
+    except Exception as e:
+        print("SOS ERROR:", e)
+        return jsonify({"error": str(e)}), 500
 
 # --------------------------------
 # CREATE ZOOM ACCESS TOKEN
